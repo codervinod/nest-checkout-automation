@@ -23,7 +23,9 @@ class EmailNotifier:
         self.username = settings.smtp_username
         self.password = settings.smtp_password
         self.from_email = settings.smtp_from_email or settings.smtp_username
-        self.to_email = settings.smtp_to_email
+        self.to_emails = [
+            e.strip() for e in settings.smtp_to_email.split(",") if e.strip()
+        ]
 
     def is_configured(self) -> bool:
         """Check if email notifications are properly configured."""
@@ -34,7 +36,7 @@ class EmailNotifier:
             and self.port
             and self.username
             and self.password
-            and self.to_email
+            and self.to_emails
         )
 
     async def send_thermostat_notification(
@@ -138,7 +140,7 @@ Summary: {success_count} turned off, {fail_count} failed
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = self.from_email
-            msg["To"] = self.to_email
+            msg["To"] = ", ".join(self.to_emails)
 
             msg.attach(MIMEText(body_text, "plain"))
             if body_html:
@@ -152,15 +154,15 @@ Summary: {success_count} turned off, {fail_count} failed
                     self.host, self.port, context=context
                 ) as server:
                     server.login(self.username, self.password)
-                    server.sendmail(self.from_email, self.to_email, msg.as_string())
+                    server.sendmail(self.from_email, self.to_emails, msg.as_string())
             else:
                 # TLS (port 587)
                 with smtplib.SMTP(self.host, self.port) as server:
                     server.starttls(context=context)
                     server.login(self.username, self.password)
-                    server.sendmail(self.from_email, self.to_email, msg.as_string())
+                    server.sendmail(self.from_email, self.to_emails, msg.as_string())
 
-            logger.info(f"Email notification sent to {self.to_email}")
+            logger.info(f"Email notification sent to {', '.join(self.to_emails)}")
             return True
 
         except Exception as e:
