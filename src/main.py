@@ -17,6 +17,7 @@ from .auth import TokenManager
 from .calendar_poller import CalendarPoller, CheckoutEvent
 from .config import settings
 from .nest_controller import NestController
+from .notifier import notifier
 
 # Configure logging
 logging.basicConfig(
@@ -51,12 +52,15 @@ async def process_checkout_event(event: CheckoutEvent) -> dict:
     logger.info(f"  Guest: {event.guest_name}")
     logger.info(f"  Event time: {event.event_start}")
 
+    # Get all devices to build ID -> name mapping
+    devices = await nest_controller.list_devices()
+    device_id_to_name = {d.device_id: d.display_name for d in devices}
+
     device_ids = settings.device_ids_list
 
     if not device_ids:
         # If no specific devices configured, try to turn off all discovered thermostats
         logger.warning("No specific device IDs configured, discovering all thermostats...")
-        devices = await nest_controller.list_devices()
         device_ids = [d.device_id for d in devices]
 
     if not device_ids:
@@ -86,6 +90,24 @@ async def process_checkout_event(event: CheckoutEvent) -> dict:
         "thermostats_failed": fail_count,
         "results": results,
     }
+
+    # Send email notification
+    if notifier.is_configured():
+        # Convert device IDs to names for the notification
+        named_results = {
+            device_id_to_name.get(device_id, device_id): success
+            for device_id, success in results.items()
+        }
+        try:
+            await notifier.send_thermostat_notification(
+                property_name=event.property_name,
+                guest_name=event.guest_name,
+                reservation_id=event.reservation_id,
+                thermostat_results=named_results,
+                event_time=event.event_start,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send notification: {e}")
 
     return last_action_result
 
@@ -279,6 +301,39 @@ async def turn_off_device(device_id: str):
         return {"device_id": device_id, "success": success, "mode": "OFF"}
     except Exception as e:
         logger.error(f"Failed to turn off device {device_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/test-notification")
+async def test_notification():
+    """Send a test email notification without turning off thermostats."""
+    if not notifier.is_configured():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Email notifications not configured. Set SMTP_ENABLED=true and provide SMTP credentials."}
+        )
+
+    # Get thermostat names for realistic test data
+    devices = await nest_controller.list_devices() if nest_controller else []
+    test_results = {d.display_name: True for d in devices} or {"Test Thermostat": True}
+
+    try:
+        success = await notifier.send_thermostat_notification(
+            property_name="Test Property",
+            guest_name="Test Guest",
+            reservation_id="TEST-123",
+            thermostat_results=test_results,
+            event_time=datetime.now(pytz.UTC),
+        )
+        if success:
+            return {"message": "Test notification sent successfully", "recipients": notifier.to_emails}
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to send notification - check logs for details"}
+            )
+    except Exception as e:
+        logger.error(f"Failed to send test notification: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
