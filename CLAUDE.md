@@ -10,6 +10,7 @@ This is a Python microservice that automatically turns off Nest thermostats when
 - `src/nest_controller.py` - Google SDM API integration
 - `src/auth.py` - OAuth token management
 - `src/config.py` - Pydantic settings
+- `src/notifier.py` - Email notification service
 
 ## Git Workflow
 
@@ -99,6 +100,15 @@ for component in cal.walk():
 - `TRIGGER_KEYWORD` - Keyword to trigger action (default: TURN_OFF_THERMOSTATS)
 - `LOG_LEVEL` - Logging level (default: INFO)
 
+**Email Notifications (optional):**
+- `SMTP_ENABLED` - Set to `true` to enable email notifications
+- `SMTP_HOST` - SMTP server (default: smtp.gmail.com)
+- `SMTP_PORT` - SMTP port (default: 587 for TLS)
+- `SMTP_USERNAME` - Email address for authentication
+- `SMTP_PASSWORD` - App password (for Gmail, generate at https://myaccount.google.com/apppasswords)
+- `SMTP_FROM_EMAIL` - From address (defaults to SMTP_USERNAME)
+- `SMTP_TO_EMAIL` - Recipient email for notifications
+
 ## Deployment
 
 ### Kubernetes (obsyk.com cluster)
@@ -146,6 +156,7 @@ docker push ghcr.io/codervinod/nest-checkout-automation:latest
    - Description contains `TURN_OFF_THERMOSTATS` keyword
 3. When triggered:
    - Turns off all configured thermostats (or all if none specified)
+   - Sends email notification (if SMTP configured)
    - Marks event as processed (by reservation ID) to prevent duplicates
 
 ## Troubleshooting

@@ -59,6 +59,36 @@ class Settings(BaseSettings):
     port: int = Field(default=8080)
     log_level: str = Field(default="INFO")
 
+    # Email Notification Configuration
+    smtp_enabled: bool = Field(
+        default=False,
+        description="Enable email notifications"
+    )
+    smtp_host: str = Field(
+        default="smtp.gmail.com",
+        description="SMTP server hostname"
+    )
+    smtp_port: int = Field(
+        default=587,
+        description="SMTP server port (587 for TLS, 465 for SSL)"
+    )
+    smtp_username: str = Field(
+        default="",
+        description="SMTP username (email address)"
+    )
+    smtp_password: str = Field(
+        default="",
+        description="SMTP password (app password for Gmail)"
+    )
+    smtp_from_email: str = Field(
+        default="",
+        description="From email address (defaults to smtp_username)"
+    )
+    smtp_to_email: str = Field(
+        default="",
+        description="Recipient email address for notifications"
+    )
+
     @property
     def device_ids_list(self) -> List[str]:
         """Parse comma-separated device IDs into a list."""

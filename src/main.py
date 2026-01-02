@@ -17,6 +17,7 @@ from .auth import TokenManager
 from .calendar_poller import CalendarPoller, CheckoutEvent
 from .config import settings
 from .nest_controller import NestController
+from .notifier import notifier
 
 # Configure logging
 logging.basicConfig(
@@ -51,12 +52,15 @@ async def process_checkout_event(event: CheckoutEvent) -> dict:
     logger.info(f"  Guest: {event.guest_name}")
     logger.info(f"  Event time: {event.event_start}")
 
+    # Get all devices to build ID -> name mapping
+    devices = await nest_controller.list_devices()
+    device_id_to_name = {d.device_id: d.display_name for d in devices}
+
     device_ids = settings.device_ids_list
 
     if not device_ids:
         # If no specific devices configured, try to turn off all discovered thermostats
         logger.warning("No specific device IDs configured, discovering all thermostats...")
-        devices = await nest_controller.list_devices()
         device_ids = [d.device_id for d in devices]
 
     if not device_ids:
@@ -86,6 +90,24 @@ async def process_checkout_event(event: CheckoutEvent) -> dict:
         "thermostats_failed": fail_count,
         "results": results,
     }
+
+    # Send email notification
+    if notifier.is_configured():
+        # Convert device IDs to names for the notification
+        named_results = {
+            device_id_to_name.get(device_id, device_id): success
+            for device_id, success in results.items()
+        }
+        try:
+            await notifier.send_thermostat_notification(
+                property_name=event.property_name,
+                guest_name=event.guest_name,
+                reservation_id=event.reservation_id,
+                thermostat_results=named_results,
+                event_time=event.event_start,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send notification: {e}")
 
     return last_action_result
 
