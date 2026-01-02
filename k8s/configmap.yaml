@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nest-checkout-automation-config
+  namespace: home-automation
+  labels:
+    app: nest-checkout-automation
+data:
+  POLL_INTERVAL_MINUTES: "10"
+  CHECKOUT_BUFFER_MINUTES: "30"
+  TRIGGER_KEYWORD: "TURN_OFF_THERMOSTATS"
+  LOG_LEVEL: "INFO"
+  HOST: "0.0.0.0"
+  PORT: "8080"
