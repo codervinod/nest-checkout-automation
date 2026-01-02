@@ -304,6 +304,39 @@ async def turn_off_device(device_id: str):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+@app.post("/test-notification")
+async def test_notification():
+    """Send a test email notification without turning off thermostats."""
+    if not notifier.is_configured():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Email notifications not configured. Set SMTP_ENABLED=true and provide SMTP credentials."}
+        )
+
+    # Get thermostat names for realistic test data
+    devices = await nest_controller.list_devices() if nest_controller else []
+    test_results = {d.display_name: True for d in devices} or {"Test Thermostat": True}
+
+    try:
+        success = await notifier.send_thermostat_notification(
+            property_name="Test Property",
+            guest_name="Test Guest",
+            reservation_id="TEST-123",
+            thermostat_results=test_results,
+            event_time=datetime.now(pytz.UTC),
+        )
+        if success:
+            return {"message": "Test notification sent successfully", "recipients": notifier.to_emails}
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to send notification - check logs for details"}
+            )
+    except Exception as e:
+        logger.error(f"Failed to send test notification: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 def main():
     """Run the application."""
     import uvicorn
