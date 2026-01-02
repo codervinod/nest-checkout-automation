@@ -4,4 +4,3 @@ metadata:
   name: home-automation
   labels:
     app.kubernetes.io/name: home-automation
-    app.kubernetes.io/description: Home automation services
