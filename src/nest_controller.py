@@ -146,6 +146,64 @@ class NestController:
                 response.raise_for_status()
                 return False
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError)),
+    )
+    async def set_eco_mode(self, device_id: str, eco_on: bool) -> bool:
+        """Set thermostat ECO mode using the ThermostatEco trait.
+
+        Args:
+            device_id: The thermostat device ID.
+            eco_on: True to enable MANUAL_ECO, False to disable (OFF).
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        mode = "MANUAL_ECO" if eco_on else "OFF"
+        url = f"{SDM_API_BASE}/enterprises/{self.project_id}/devices/{device_id}:executeCommand"
+        payload = {
+            "command": "sdm.devices.commands.ThermostatEco.SetMode",
+            "params": {"mode": mode},
+        }
+
+        logger.info(f"Setting thermostat {device_id} ECO mode to: {mode}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                url, headers=self._get_headers(), json=payload
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Successfully set thermostat {device_id} ECO to {mode}")
+                return True
+            else:
+                logger.error(
+                    f"Failed to set ECO mode: {response.status_code} - {response.text}"
+                )
+                response.raise_for_status()
+                return False
+
+    async def set_eco_mode_all(self, device_ids: List[str], eco_on: bool) -> dict:
+        """Set ECO mode on multiple thermostats.
+
+        Args:
+            device_ids: List of device IDs to update.
+            eco_on: True to enable MANUAL_ECO, False to disable.
+
+        Returns:
+            Dictionary mapping device_id to success status.
+        """
+        results = {}
+        for device_id in device_ids:
+            try:
+                results[device_id] = await self.set_eco_mode(device_id, eco_on)
+            except Exception as e:
+                logger.error(f"Failed to set ECO mode on {device_id}: {e}")
+                results[device_id] = False
+        return results
+
     async def turn_off_thermostat(self, device_id: str) -> bool:
         """Turn off a thermostat.
 

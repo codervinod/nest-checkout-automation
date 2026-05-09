@@ -8,7 +8,9 @@ from datetime import datetime
 from typing import Optional
 
 import pytz
+import zoneinfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -140,6 +142,30 @@ async def poll_calendar_job():
         logger.error(f"Calendar poll job failed: {e}")
 
 
+async def eco_mode_job():
+    """Scheduled job to set active thermostats to ECO mode."""
+    logger.info("Running scheduled ECO mode job...")
+    try:
+        devices = await nest_controller.list_devices(force_refresh=True)
+        device_ids = settings.device_ids_list or [d.device_id for d in devices]
+        mode_by_id = {d.device_id: d.current_mode for d in devices}
+
+        eligible = [did for did in device_ids if mode_by_id.get(did, "UNKNOWN") != "OFF"]
+        if not eligible:
+            logger.info("ECO schedule: all thermostats already OFF, skipping")
+            return
+
+        results = await nest_controller.set_eco_mode_all(eligible, eco_on=True)
+        successes = sum(results.values())
+        skipped = len(device_ids) - len(eligible)
+        logger.info(
+            f"ECO mode set: {successes}/{len(results)} eligible devices succeeded"
+            + (f" (skipped {skipped} already-OFF)" if skipped else "")
+        )
+    except Exception as e:
+        logger.error(f"ECO mode job failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown."""
@@ -183,6 +209,29 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         replace_existing=True,
     )
+    if settings.eco_schedule_enabled:
+        tz = zoneinfo.ZoneInfo(settings.eco_timezone)
+        scheduler.add_job(
+            eco_mode_job,
+            trigger=CronTrigger(hour=settings.eco_daytime_hour, minute=0, timezone=tz),
+            id="eco_daytime",
+            name="Set ECO mode - daytime",
+            max_instances=1,
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            eco_mode_job,
+            trigger=CronTrigger(hour=settings.eco_nighttime_hour, minute=0, timezone=tz),
+            id="eco_nighttime",
+            name="Set ECO mode - nighttime",
+            max_instances=1,
+            replace_existing=True,
+        )
+        logger.info(
+            f"ECO schedule enabled: {settings.eco_daytime_hour}:00 and "
+            f"{settings.eco_nighttime_hour}:00 {settings.eco_timezone}"
+        )
+
     scheduler.start()
     logger.info("Scheduler started")
 
@@ -247,6 +296,12 @@ async def get_status():
             "trigger_keyword": settings.trigger_keyword,
             "configured_device_ids": settings.device_ids_list,
         },
+        "eco_schedule": {
+            "enabled": settings.eco_schedule_enabled,
+            "daytime_hour": settings.eco_daytime_hour,
+            "nighttime_hour": settings.eco_nighttime_hour,
+            "timezone": settings.eco_timezone,
+        } if settings.eco_schedule_enabled else None,
     }
 
 
@@ -302,6 +357,18 @@ async def turn_off_device(device_id: str):
     except Exception as e:
         logger.error(f"Failed to turn off device {device_id}: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/eco-mode")
+async def trigger_eco_mode():
+    """Manually trigger ECO mode on all active thermostats."""
+    if not nest_controller:
+        return JSONResponse(
+            status_code=503, content={"error": "Service not initialized"}
+        )
+    logger.info("Manual ECO mode triggered via API")
+    await eco_mode_job()
+    return {"status": "triggered"}
 
 
 @app.post("/test-notification")
