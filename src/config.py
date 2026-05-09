@@ -89,6 +89,24 @@ class Settings(BaseSettings):
         description="Recipient email address for notifications"
     )
 
+    # Scheduled ECO mode configuration
+    eco_schedule_enabled: bool = Field(
+        default=False,
+        description="Enable scheduled ECO mode at fixed daily times"
+    )
+    eco_daytime_hour: int = Field(
+        default=11,
+        description="Hour (0-23, local time) to set ECO mode during the day"
+    )
+    eco_nighttime_hour: int = Field(
+        default=23,
+        description="Hour (0-23, local time) to set ECO mode at night"
+    )
+    eco_timezone: str = Field(
+        default="America/Los_Angeles",
+        description="Timezone for ECO schedule (IANA tz name)"
+    )
+
     @property
     def device_ids_list(self) -> List[str]:
         """Parse comma-separated device IDs into a list."""

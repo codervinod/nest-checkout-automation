@@ -12,3 +12,7 @@ data:
   LOG_LEVEL: "INFO"
   HOST: "0.0.0.0"
   PORT: "8080"
+  ECO_SCHEDULE_ENABLED: "true"
+  ECO_DAYTIME_HOUR: "11"
+  ECO_NIGHTTIME_HOUR: "23"
+  ECO_TIMEZONE: "America/Los_Angeles"
